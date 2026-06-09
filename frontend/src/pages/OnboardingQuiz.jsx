@@ -210,7 +210,7 @@ export default function OnboardingQuiz() {
       energy_devices_hours_per_day:   toNum(form.energy_devices_hours_per_day),
     };
     try {
-      const res = await fetch("http://localhost:8000/api/calculate", {
+      const res = await fetch("https://carbon-footprint-dk7t.onrender.com/api/calculate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
