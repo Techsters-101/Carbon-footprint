@@ -1,0 +1,9 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/carbon_data.db
+
+# React
+frontend/node_modules/
+frontend/dist/
+.env
