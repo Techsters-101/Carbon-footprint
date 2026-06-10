@@ -176,7 +176,7 @@ export default function Dashboard() {
       <main className="max-w-5xl mx-auto px-5 py-10 pb-20 flex flex-col gap-6">
         {/* Page header */}
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-zinc-50">Your Carbon Report</h1>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-zinc-50">Your Carbon Report</h1>
           <p className="text-sm text-zinc-500 mt-1.5">Annual estimated footprint — calibrated for India.</p>
         </div>
 

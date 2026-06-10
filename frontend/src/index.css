@@ -1,1 +1,14 @@
+/* 1. Pull in the fonts from Google */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+/* 2. Load Tailwind v4 */
 @import "tailwindcss";
+
+/* 3. Tell Tailwind to use our new fonts */
+@theme {
+  /* This automatically makes 'Inter' your default global font */
+  --font-sans: 'Inter', sans-serif;
+  
+  /* This creates a custom utility class 'font-display' for your headings */
+  --font-display: 'Space Grotesk', sans-serif;
+}
