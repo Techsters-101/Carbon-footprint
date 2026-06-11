@@ -13,6 +13,8 @@ Expanded emission factors (Indian context):
 """
 import os
 import json
+import asyncio
+from functools import lru_cache
 from groq import Groq
 
 import sqlite3
@@ -98,7 +100,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # Change to your Vercel URL later for better security scoring
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -289,6 +291,20 @@ Example output format:
     except Exception as exc:
         print(f"[Groq fallback] {type(exc).__name__}: {exc}")
         return _fallback_suggestions(t, d, e)
+
+# ── Cached Wrapper for Groq ───────────────────────────────────────────────────
+@lru_cache(maxsize=128)
+def get_cached_suggestions(t_score: float, t_label: str, d_score: float, d_label: str, e_score: float, e_label: str) -> list[str]:
+    """
+    Bypasses the live Groq network call if an identical score and label signature 
+    has already been processed.
+    """
+    t_data = {"score_kg_co2e": t_score, "label": t_label}
+    d_data = {"score_kg_co2e": d_score, "label": d_label}
+    e_data = {"score_kg_co2e": e_score, "label": e_label}
+    
+    return get_suggestions(t_data, d_data, e_data)
+
 # ─────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────
@@ -306,13 +322,24 @@ def submission_count():
 
 
 @app.post("/api/calculate")
-def calculate_footprint(payload: QuizPayload):
+async def calculate_footprint(payload: QuizPayload):
     try:
         t = TransportCalculator.calculate(payload)
         d = DietCalculator.calculate(payload)
         e = EnergyCalculator.calculate(payload)
         total = round(t["score_kg_co2e"] + d["score_kg_co2e"] + e["score_kg_co2e"], 2)
-        save_submission(payload, t["score_kg_co2e"], d["score_kg_co2e"], e["score_kg_co2e"], total)
+        
+        # Offload DB transaction to thread pool to avoid blocking the event loop
+        await asyncio.to_thread(save_submission, payload, t["score_kg_co2e"], d["score_kg_co2e"], e["score_kg_co2e"], total)
+        
+        # Offload AI call to thread pool, protected by lru_cache
+        suggestions = await asyncio.to_thread(
+            get_cached_suggestions,
+            t["score_kg_co2e"], t["label"],
+            d["score_kg_co2e"], d["label"],
+            e["score_kg_co2e"], e["label"]
+        )
+
         return {
             "total_score_kg_co2e": total,
             "global_label": get_global_label(total),
@@ -321,7 +348,7 @@ def calculate_footprint(payload: QuizPayload):
                 "diet":      {"score_kg_co2e": d["score_kg_co2e"], "label": d["label"]},
                 "energy":    {"score_kg_co2e": e["score_kg_co2e"], "label": e["label"]},
             },
-            "suggestions": get_suggestions(t, d, e),
+            "suggestions": suggestions,
             "comparison": {
                 "india_avg_kg":  2200,
                 "global_avg_kg": 4700,
