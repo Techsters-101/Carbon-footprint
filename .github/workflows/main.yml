@@ -1,0 +1,42 @@
+name: Carbonly CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  backend-tests-and-linting:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install Backend Dependencies
+      run: |
+        cd backend
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest black ruff
+
+    - name: Check Code Formatting (Black)
+      run: |
+        cd backend
+        black --check .
+
+    - name: Run Linter (Ruff)
+      run: |
+        cd backend
+        ruff check .
+
+    - name: Run Backend Tests (Pytest)
+      run: |
+        cd backend
+        pytest
