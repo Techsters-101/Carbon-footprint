@@ -4,24 +4,28 @@ from main import app, get_suggestions  # Assumes your FastAPI entry point is mai
 
 client = TestClient(app)
 
+
 # ─── Mocking the Groq AI layer ───────────────────────────────────────────────
 @pytest.fixture(autouse=True)
 def mock_groq_suggestions(monkeypatch):
     """
-    Automatically intercept any calls to the live get_suggestions function 
+    Automatically intercept any calls to the live get_suggestions function
     and return a predictable mock response instead.
     """
+
     def mock_return(*args, **kwargs):
         return [
             "Mocked Suggestion 1: Consider taking public transit.",
             "Mocked Suggestion 2: Reduce meat consumption.",
-            "Mocked Suggestion 3: Switch to energy-efficient appliances."
+            "Mocked Suggestion 3: Switch to energy-efficient appliances.",
         ]
+
     # Adjust 'main.get_suggestions' depending on exactly where it is imported/defined
     monkeypatch.setattr("main.get_suggestions", mock_return)
 
 
 # ─── Unit Test Cases ──────────────────────────────────────────────────────────
+
 
 def test_health_check():
     """Verify that the API root or health check baseline is operational."""
@@ -36,24 +40,24 @@ def test_calculate_endpoint_valid_data():
     payload = {
         "transport": {"km_per_week": 150, "mode": "metro"},
         "diet": {"meals_with_meat_per_week": 2},
-        "energy": {"electricity_kwh": 120}
+        "energy": {"electricity_kwh": 120},
     }
-    
+
     response = client.post("/api/calculate", json=payload)
-    
+
     # Assert successful HTTP layer handshake
     assert response.status_code == 200
-    
+
     data = response.json()
-    
+
     # Assert key structural layout expectations
     assert "total_score_kg_co2e" in data
     assert "global_label" in data
     assert "categories" in data
     assert "suggestions" in data
     assert "comparison" in data
-    
-    # Assert mock injection caught the response successfully 
+
+    # Assert mock injection caught the response successfully
     assert len(data["suggestions"]) == 3
     assert "Mocked Suggestion 1" in data["suggestions"][0]
 
@@ -64,9 +68,9 @@ def test_calculate_endpoint_missing_data():
         "transport": {"km_per_week": 150, "mode": "metro"}
         # missing diet and energy keys entirely
     }
-    
+
     response = client.post("/api/calculate", json=incomplete_payload)
-    
+
     # If your backend gracefully handles missing keys, it returns 200
     if response.status_code == 200:
         data = response.json()
