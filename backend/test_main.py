@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from main import app, get_suggestions  # Assumes your FastAPI entry point is main.py
+from main import app  # Assumes your FastAPI entry point is main.py
 
 client = TestClient(app)
 
