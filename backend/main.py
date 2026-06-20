@@ -11,6 +11,7 @@ Expanded emission factors (Indian context):
   Energy    — Elec     : 0.72  kg CO2e / kWh, ₹7/kWh tariff → 0.1029 kg/₹ (CEA 2023)
   Energy    — Devices  : 0.05  kg CO2e / hr/day (avg 50W device × India grid)
 """
+
 import os
 import json
 import asyncio
@@ -31,10 +32,12 @@ from pydantic import BaseModel, Field
 # ─────────────────────────────────────────────
 DB_PATH = "carbon_data.db"
 
+
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def init_db():
     with get_db() as conn:
@@ -57,6 +60,7 @@ def init_db():
         """)
         conn.commit()
 
+
 def save_submission(payload, t_score, d_score, e_score, total):
     with get_db() as conn:
         conn.execute(
@@ -78,10 +82,14 @@ def save_submission(payload, t_score, d_score, e_score, total):
                 payload.diet_delivery_orders_per_month,
                 payload.energy_bill_inr_per_month,
                 payload.energy_devices_hours_per_day,
-                t_score, d_score, e_score, total,
+                t_score,
+                d_score,
+                e_score,
+                total,
             ),
         )
         conn.commit()
+
 
 # ─────────────────────────────────────────────
 # App Init
@@ -90,6 +98,7 @@ def save_submission(payload, t_score, d_score, e_score, total):
 async def lifespan(app: FastAPI):
     init_db()
     yield
+
 
 app = FastAPI(
     title="Carbon Footprint API (India v3)",
@@ -100,103 +109,123 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Change to your Vercel URL later for better security scoring
+    allow_origins=["*"],  # Change to your Vercel URL later for better security scoring
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # ─────────────────────────────────────────────
 # Pydantic Schema  (7-field expanded quiz)
 # ─────────────────────────────────────────────
 class QuizPayload(BaseModel):
     # Transport
-    transport_car_km_per_week:      float = Field(0, ge=0, le=10_000)
-    transport_train_km_per_month:   float = Field(0, ge=0, le=20_000)
-    transport_flights_per_year:     float = Field(0, ge=0, le=200)
+    transport_car_km_per_week: float = Field(0, ge=0, le=10_000)
+    transport_train_km_per_month: float = Field(0, ge=0, le=20_000)
+    transport_flights_per_year: float = Field(0, ge=0, le=200)
     # Diet & Lifestyle
-    diet_meat_meals_per_week:       int   = Field(0, ge=0, le=21)
-    diet_delivery_orders_per_month: int   = Field(0, ge=0, le=200)
+    diet_meat_meals_per_week: int = Field(0, ge=0, le=21)
+    diet_delivery_orders_per_month: int = Field(0, ge=0, le=200)
     # Energy & Tech
-    energy_bill_inr_per_month:      float = Field(0, ge=0, le=50_000)
-    energy_devices_hours_per_day:   float = Field(0, ge=0, le=24)
+    energy_bill_inr_per_month: float = Field(0, ge=0, le=50_000)
+    energy_devices_hours_per_day: float = Field(0, ge=0, le=24)
+
 
 # ─────────────────────────────────────────────
 # Calculator Modules
 # ─────────────────────────────────────────────
 
+
 class TransportCalculator:
-    KG_PER_CAR_KM      = 0.158   # petrol/diesel car, India avg
-    KG_PER_TRAIN_KM    = 0.012   # AC coach, Indian Railways
-    KG_PER_FLIGHT      = 255.0   # domestic flight avg
+    KG_PER_CAR_KM = 0.158  # petrol/diesel car, India avg
+    KG_PER_TRAIN_KM = 0.012  # AC coach, Indian Railways
+    KG_PER_FLIGHT = 255.0  # domestic flight avg
 
     @classmethod
     def calculate(cls, p: QuizPayload) -> dict:
-        car_annual   = p.transport_car_km_per_week * 52 * cls.KG_PER_CAR_KM
+        car_annual = p.transport_car_km_per_week * 52 * cls.KG_PER_CAR_KM
         train_annual = p.transport_train_km_per_month * 12 * cls.KG_PER_TRAIN_KM
-        flight_annual= p.transport_flights_per_year * cls.KG_PER_FLIGHT
+        flight_annual = p.transport_flights_per_year * cls.KG_PER_FLIGHT
         total = car_annual + train_annual + flight_annual
         return {"score_kg_co2e": round(total, 2), "label": cls._label(total)}
 
     @staticmethod
     def _label(s):
-        if s < 500:  return "Low"
-        if s < 1500: return "Moderate"
-        if s < 3000: return "High"
+        if s < 500:
+            return "Low"
+        if s < 1500:
+            return "Moderate"
+        if s < 3000:
+            return "High"
         return "Very High"
 
 
 class DietCalculator:
-    KG_PER_MEAT_MEAL    = 2.5    # blended Indian meat meal
-    KG_PER_DELIVERY     = 0.8    # packaging + 2-wheeler last-mile
+    KG_PER_MEAT_MEAL = 2.5  # blended Indian meat meal
+    KG_PER_DELIVERY = 0.8  # packaging + 2-wheeler last-mile
 
     @classmethod
     def calculate(cls, p: QuizPayload) -> dict:
-        meat_annual     = p.diet_meat_meals_per_week * 52 * cls.KG_PER_MEAT_MEAL
+        meat_annual = p.diet_meat_meals_per_week * 52 * cls.KG_PER_MEAT_MEAL
         delivery_annual = p.diet_delivery_orders_per_month * 12 * cls.KG_PER_DELIVERY
         total = meat_annual + delivery_annual
         return {"score_kg_co2e": round(total, 2), "label": cls._label(total)}
 
     @staticmethod
     def _label(s):
-        if s < 300:  return "Low"
-        if s < 800:  return "Moderate"
-        if s < 2000: return "High"
+        if s < 300:
+            return "Low"
+        if s < 800:
+            return "Moderate"
+        if s < 2000:
+            return "High"
         return "Very High"
 
 
 class EnergyCalculator:
-    KG_PER_INR            = 0.72 / 7.0   # ≈ 0.10286 (CEA 2023, ₹7/kWh tariff)
+    KG_PER_INR = 0.72 / 7.0  # ≈ 0.10286 (CEA 2023, ₹7/kWh tariff)
     # Avg device: 50W, India grid 0.72 kg/kWh → 50W × 0.72/1000 = 0.036 kg/hr
     # Add phone, laptop, headphones blend → ~0.05 kg/hr/day across devices
-    KG_PER_DEVICE_HR_DAY  = 0.05 * 365   # annualised
+    KG_PER_DEVICE_HR_DAY = 0.05 * 365  # annualised
 
     @classmethod
     def calculate(cls, p: QuizPayload) -> dict:
-        elec_annual   = p.energy_bill_inr_per_month * 12 * cls.KG_PER_INR
+        elec_annual = p.energy_bill_inr_per_month * 12 * cls.KG_PER_INR
         device_annual = p.energy_devices_hours_per_day * cls.KG_PER_DEVICE_HR_DAY
         total = elec_annual + device_annual
         return {"score_kg_co2e": round(total, 2), "label": cls._label(total)}
 
     @staticmethod
     def _label(s):
-        if s < 400:  return "Low"
-        if s < 1200: return "Moderate"
-        if s < 2500: return "High"
+        if s < 400:
+            return "Low"
+        if s < 1200:
+            return "Moderate"
+        if s < 2500:
+            return "High"
         return "Very High"
 
 
 def get_global_label(score: float) -> str:
-    if score < 1000: return "Excellent"
-    if score < 2200: return "Below Average"
-    if score < 4700: return "Average"
-    if score < 8000: return "Above Average"
+    if score < 1000:
+        return "Excellent"
+    if score < 2200:
+        return "Below Average"
+    if score < 4700:
+        return "Average"
+    if score < 8000:
+        return "Above Average"
     return "High Impact"
 
 
 # ── Hardcoded fallback (used if Groq call fails) ──────────────────────────────
 def _fallback_suggestions(t: dict, d: dict, e: dict) -> list[str]:
-    scores = {"transport": t["score_kg_co2e"], "diet": d["score_kg_co2e"], "energy": e["score_kg_co2e"]}
+    scores = {
+        "transport": t["score_kg_co2e"],
+        "diet": d["score_kg_co2e"],
+        "energy": e["score_kg_co2e"],
+    }
     ranked = sorted(scores, key=scores.get, reverse=True)
     tips = {
         "transport": [
@@ -220,6 +249,7 @@ def _fallback_suggestions(t: dict, d: dict, e: dict) -> list[str]:
         idx = 0 if scores[cat] > 2000 else (1 if scores[cat] > 800 else 2)
         suggestions.append(tips[cat][idx])
     return suggestions[:3]
+
 
 # ── Groq-powered suggestions with fallback ────────────────────────────────────
 def get_suggestions(t: dict, d: dict, e: dict) -> list[str]:
@@ -259,7 +289,7 @@ Example output format:
             response_format={"type": "json_object"},
             temperature=0.7,
             max_tokens=256,
-            timeout=8,          # 8 s — safe for hackathon demo conditions
+            timeout=8,  # 8 s — safe for hackathon demo conditions
             messages=[
                 {
                     "role": "system",
@@ -277,7 +307,11 @@ Example output format:
         parsed = json.loads(raw)
 
         if isinstance(parsed, dict):
-            tips = parsed.get("suggestions") or parsed.get("tips") or next(iter(parsed.values()))
+            tips = (
+                parsed.get("suggestions")
+                or parsed.get("tips")
+                or next(iter(parsed.values()))
+            )
         elif isinstance(parsed, list):
             tips = parsed
         else:
@@ -292,22 +326,32 @@ Example output format:
         print(f"[Groq fallback] {type(exc).__name__}: {exc}")
         return _fallback_suggestions(t, d, e)
 
+
 # ── Cached Wrapper for Groq ───────────────────────────────────────────────────
 @lru_cache(maxsize=128)
-def get_cached_suggestions(t_score: float, t_label: str, d_score: float, d_label: str, e_score: float, e_label: str) -> list[str]:
+def get_cached_suggestions(
+    t_score: float,
+    t_label: str,
+    d_score: float,
+    d_label: str,
+    e_score: float,
+    e_label: str,
+) -> list[str]:
     """
-    Bypasses the live Groq network call if an identical score and label signature 
+    Bypasses the live Groq network call if an identical score and label signature
     has already been processed.
     """
     t_data = {"score_kg_co2e": t_score, "label": t_label}
     d_data = {"score_kg_co2e": d_score, "label": d_label}
     e_data = {"score_kg_co2e": e_score, "label": e_label}
-    
+
     return get_suggestions(t_data, d_data, e_data)
+
 
 # ─────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────
+
 
 @app.get("/")
 def root():
@@ -328,16 +372,26 @@ async def calculate_footprint(payload: QuizPayload):
         d = DietCalculator.calculate(payload)
         e = EnergyCalculator.calculate(payload)
         total = round(t["score_kg_co2e"] + d["score_kg_co2e"] + e["score_kg_co2e"], 2)
-        
+
         # Offload DB transaction to thread pool to avoid blocking the event loop
-        await asyncio.to_thread(save_submission, payload, t["score_kg_co2e"], d["score_kg_co2e"], e["score_kg_co2e"], total)
-        
+        await asyncio.to_thread(
+            save_submission,
+            payload,
+            t["score_kg_co2e"],
+            d["score_kg_co2e"],
+            e["score_kg_co2e"],
+            total,
+        )
+
         # Offload AI call to thread pool, protected by lru_cache
         suggestions = await asyncio.to_thread(
             get_cached_suggestions,
-            t["score_kg_co2e"], t["label"],
-            d["score_kg_co2e"], d["label"],
-            e["score_kg_co2e"], e["label"]
+            t["score_kg_co2e"],
+            t["label"],
+            d["score_kg_co2e"],
+            d["label"],
+            e["score_kg_co2e"],
+            e["label"],
         )
 
         return {
@@ -345,12 +399,12 @@ async def calculate_footprint(payload: QuizPayload):
             "global_label": get_global_label(total),
             "categories": {
                 "transport": {"score_kg_co2e": t["score_kg_co2e"], "label": t["label"]},
-                "diet":      {"score_kg_co2e": d["score_kg_co2e"], "label": d["label"]},
-                "energy":    {"score_kg_co2e": e["score_kg_co2e"], "label": e["label"]},
+                "diet": {"score_kg_co2e": d["score_kg_co2e"], "label": d["label"]},
+                "energy": {"score_kg_co2e": e["score_kg_co2e"], "label": e["label"]},
             },
             "suggestions": suggestions,
             "comparison": {
-                "india_avg_kg":  2200,
+                "india_avg_kg": 2200,
                 "global_avg_kg": 4700,
                 "your_score_kg": total,
             },
