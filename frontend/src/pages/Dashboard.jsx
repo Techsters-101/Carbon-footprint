@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LabelList,
@@ -85,7 +86,7 @@ function ScoreRing({ score, label }) {
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <svg width="160" height="160" viewBox="0 0 160 160">
+      <svg width="160" height="160" viewBox="0 0 160 160" role="img" aria-label={`Carbon footprint score ring representing ${(score / 1000).toFixed(2)} tonnes`}>
         {/* Track */}
         <circle cx="80" cy="80" r={R} fill="none" stroke="#27272a" strokeWidth="12" />
         {/* Fill */}
@@ -129,6 +130,35 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const result   = location.state?.result ?? MOCK;
 
+  // 1. Add state to hold our history
+  const [history, setHistory] = useState([]);
+
+  // 2. Save to localStorage whenever the dashboard loads with a new result
+  useEffect(() => {
+    if (!result || !result.total_score_kg_co2e) return;
+
+    // Pull existing history from the browser's private storage
+    const savedHistory = JSON.parse(localStorage.getItem("carbonly_history") || "[]");
+    
+    const newEntry = {
+      id: Date.now(),
+      date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+      score: result.total_score_kg_co2e
+    };
+
+    // Prevent saving the exact same score multiple times if they just refresh the page
+    const isDuplicate = savedHistory.length > 0 && savedHistory[0].score === newEntry.score && savedHistory[0].date === newEntry.date;
+    
+    if (!isDuplicate) {
+      // Keep only the 5 most recent calculations to keep it clean
+      const updatedHistory = [newEntry, ...savedHistory].slice(0, 5);
+      localStorage.setItem("carbonly_history", JSON.stringify(updatedHistory));
+      setHistory(updatedHistory);
+    } else {
+      setHistory(savedHistory);
+    }
+  }, [result]);
+
   const { total_score_kg_co2e, global_label, categories, suggestions, comparison } = result;
 
   // Recharts data — Category breakdown
@@ -139,7 +169,7 @@ export default function Dashboard() {
     label: val.label,
   }));
 
-  // Recharts data — Comparison (use india_avg_kg if present, fallback graceful)
+  // Recharts data — Comparison
   const indiaAvg = comparison.india_avg_kg ?? 2200;
   const compData = [
     { name: "India Avg",  value: indiaAvg,                    color: "#34d399" },
@@ -156,7 +186,7 @@ export default function Dashboard() {
       <nav className="sticky top-0 z-20 bg-zinc-950/90 backdrop-blur-sm border-b border-zinc-800/60">
         <div className="max-w-5xl mx-auto px-5 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10"/>
               <path d="M12 8c-2.2 0-4 1.8-4 4s1.8 4 4 4"/>
               <path d="M16 3c1 2.5.5 5-1 7"/>
@@ -328,6 +358,33 @@ export default function Dashboard() {
             ))}
           </div>
         </Card>
+
+        {/* Tracking History Card */}
+        {history.length > 0 && (
+          <Card title="📈 Your Footprint History">
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-zinc-500 mb-2">
+                Your past calculations are saved privately on this device to help you track your progress.
+              </p>
+              {history.map((item, index) => (
+                <div 
+                  key={item.id} 
+                  className="flex items-center justify-between p-3 rounded-xl bg-zinc-950/50 border border-zinc-800/50"
+                >
+                  <span className="text-sm text-zinc-400">{item.date}</span>
+                  <div className="flex items-center gap-3">
+                    {index < history.length - 1 && item.score < history[index + 1].score && (
+                      <span className="text-xs text-emerald-400 font-medium">↓ Improved</span>
+                    )}
+                    <span className="text-sm font-bold text-zinc-200">
+                      {(item.score / 1000).toFixed(2)} <span className="text-xs font-normal text-zinc-500">T CO₂e</span>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Retake CTA */}
         <div className="flex justify-center pt-2">
